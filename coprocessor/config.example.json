@@ -1,0 +1,80 @@
+{
+  "nt": {
+    "team": 7407,
+    "server": null,
+    "client_name": "opi-vision"
+  },
+  "topic": "/Vision/observations",
+  "field": {
+    "layout": "k2026RebuiltWelded",
+    "tag_size_m": 0.1651
+  },
+  "detector": {
+    "family": "tag36h11",
+    "quad_decimate": 2.0,
+    "num_threads": 2,
+    "refine_edges": true,
+    "min_cluster_pixels": 20
+  },
+  "filters": {
+    "max_hamming": 0,
+    "min_decision_margin": 25.0,
+    "max_single_tag_ambiguity": 0.2,
+    "max_tag_distance_m": 6.0,
+    "field_border_margin_m": 0.5,
+    "max_z_error_m": 0.75
+  },
+  "stddev": {
+    "xy_coefficient": 0.01,
+    "theta_coefficient": 0.03,
+    "trust_single_tag_theta": false
+  },
+  "stream": {
+    "enabled": true,
+    "base_port": 1181,
+    "max_fps": 30,
+    "jpeg_quality": 80
+  },
+  "cameras": [
+    {
+      "name": "front_left",
+      "device": "/dev/v4l/by-path/REPLACE-ME-video-index0",
+      "width": 1280,
+      "height": 800,
+      "fps": 50,
+      "fourcc": "MJPG",
+      "calibration": "calibrations/front_left.json",
+      "robot_to_camera": {
+        "x": 0.28,
+        "y": 0.28,
+        "z": 0.22,
+        "roll_deg": 0,
+        "pitch_deg": -15,
+        "yaw_deg": 30
+      },
+      "std_dev_factor": 1.0,
+      "exposure": null,
+      "gain": null
+    },
+    {
+      "name": "back_right",
+      "device": "/dev/v4l/by-path/REPLACE-ME-video-index0",
+      "width": 1280,
+      "height": 800,
+      "fps": 50,
+      "fourcc": "MJPG",
+      "calibration": "calibrations/back_right.json",
+      "robot_to_camera": {
+        "x": -0.28,
+        "y": -0.28,
+        "z": 0.22,
+        "roll_deg": 0,
+        "pitch_deg": -15,
+        "yaw_deg": 210
+      },
+      "std_dev_factor": 1.0,
+      "exposure": null,
+      "gain": null
+    }
+  ]
+}

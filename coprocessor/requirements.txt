@@ -1,0 +1,6 @@
+robotpy-apriltag
+pyntcore
+robotpy-wpimath
+robotpy-wpiutil
+opencv-python-headless
+numpy

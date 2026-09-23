@@ -1,0 +1,19 @@
+# Auto-start the vision coprocessor on boot.
+#   sudo cp vision.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now vision
+#   journalctl -u vision -f        # view logs
+[Unit]
+Description=FRC multi-camera AprilTag vision
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Change these two paths/user to match where you put the code.
+User=orangepi
+WorkingDirectory=/home/orangepi/vision/coprocessor
+ExecStart=/usr/bin/python3 -u main.py --config config.json
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
