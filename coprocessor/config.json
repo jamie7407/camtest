@@ -37,40 +37,40 @@
   },
   "cameras": [
     {
-      "name": "front_cam",
+      "name": "left_cam",
       "device": "/dev/v4l/by-path/REPLACE-ME-video-index0",
       "width": 1280,
       "height": 800,
       "fps": 50,
       "fourcc": "MJPG",
-      "calibration": "calibrations/front_cam.json",
+      "calibration": "calibrations/left_cam.json",
       "robot_to_camera": {
-        "x": -0.107467,
-        "y": -0.277089,
-        "z": 0.512699,
+        "x": 0.020625,
+        "y": -0.294407,
+        "z": 0.078312,
         "roll_deg": 0,
-        "pitch_deg": -31.898,
-        "yaw_deg": 10
+        "pitch_deg": -22,
+        "yaw_deg": -105
       },
       "std_dev_factor": 1.0,
       "exposure": null,
       "gain": null
     },
     {
-      "name": "front_left_cam",
-      "device": "/dev/v4l/by-path/REPLACE-ME-video-index0",
+      "name": "right_cam",
+      "device": "/dev/v4l/by-path/REPLACE-ME-video-index1",
       "width": 1280,
       "height": 800,
       "fps": 50,
       "fourcc": "MJPG",
-      "calibration": "calibrations/front_left_cam.json",
+      "calibration": "calibrations/right_cam.json",
       "robot_to_camera": {
-        "x": -0.107467,
-        "y": 0.277089,
-        "z": 0.512699,
+        "x": -0.020625,
+        "y": -0.294407,
+        "z": 0.078312,
         "roll_deg": 0,
-        "pitch_deg": -31.898,
-        "yaw_deg": -10
+        "pitch_deg": -22,
+        "yaw_deg": -75
       },
       "std_dev_factor": 1.0,
       "exposure": null,
