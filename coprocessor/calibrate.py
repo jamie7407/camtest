@@ -14,6 +14,14 @@ config.py refuses to load a calibration whose recorded resolution doesn't
 match. The saved file goes straight into calibrations/<name>.json, matching
 what config.json expects.
 
+It asks for the board settings, using the same fields as PhotonVision (tag
+family, pattern spacing, marker size, board height/width, old pattern). Press
+Enter to accept the defaults, which match the board --generate-board prints.
+To skip the questions, pass them as flags instead, e.g. for a PhotonVision board:
+
+    python3 calibrate.py --camera 0 --name front_left --dict 4x4 \
+        --square-length 1.00in --marker-length 0.75in --squares-x 8 --squares-y 8 --no-legacy
+
 Don't have a board yet? Generate one:
 
     python3 calibrate.py --generate-board board.png
@@ -42,6 +50,72 @@ import cv2
 
 WINDOW = "calibrate"
 GRID_COLS, GRID_ROWS = 4, 3
+
+LENGTH_UNITS = {"in": 0.0254, "mm": 0.001, "cm": 0.01, "m": 1.0}
+
+
+def parse_length(text):
+    """'1.00in', '25.4mm', '3.5cm', '0.035m', or a bare number in meters -> meters."""
+    s = text.strip().lower().replace('"', "in")
+    for unit in sorted(LENGTH_UNITS, key=len, reverse=True):  # "mm" before "m"
+        if s.endswith(unit):
+            return float(s[: -len(unit)]) * LENGTH_UNITS[unit]
+    return float(s)
+
+
+def parse_dict(text):
+    """'4x4' (PhotonVision's tag family) or a full cv2.aruco name like 'DICT_4X4_50'."""
+    s = text.strip().upper()
+    if not s.startswith("DICT_"):
+        # PhotonVision uses the 1000-marker dictionaries. Smaller ones are prefixes of
+        # them, so a board printed from DICT_4X4_50 is still detected.
+        s = f"DICT_{s}_1000"
+    if not hasattr(cv2.aruco, s):
+        raise ValueError("expected 4x4, 5x5, 6x6, 7x7, or a name like DICT_4X4_50")
+    return s
+
+
+def parse_yes_no(text):
+    s = text.strip().lower()
+    if s in ("y", "yes", "true", "1"):
+        return True
+    if s in ("n", "no", "false", "0"):
+        return False
+    raise ValueError("answer y or n")
+
+
+# Same fields, in the same order, as PhotonVision's calibration board settings.
+# (argparse dest, prompt, default, parser)
+BOARD_FIELDS = [
+    ("dict", "Tag family (4x4, 5x5, 6x6, 7x7)", "4x4", parse_dict),
+    ("square_length", "Pattern spacing / square size (e.g. 1.00in, 25mm)", "35mm", parse_length),
+    ("marker_length", "Marker size (e.g. 0.75in, 19mm)", "26mm", parse_length),
+    ("squares_y", "Board height (squares)", "7", int),
+    ("squares_x", "Board width (squares)", "5", int),
+    ("legacy", "Old (legacy) pattern? (PhotonVision's 'Use old pattern')", "n", parse_yes_no),
+]
+
+
+def ask(prompt, default, parse):
+    while True:
+        text = input(f"{prompt} [{default}]: ").strip() or default
+        try:
+            return parse(text)
+        except ValueError as e:
+            print(f"  couldn't use {text!r}: {e}")
+
+
+def resolve_board_args(args):
+    """Fill in board settings not given as flags: ask if interactive, else use defaults."""
+    missing = [f for f in BOARD_FIELDS if getattr(args, f[0]) is None]
+    if missing and sys.stdin.isatty():
+        print("Board settings (Enter keeps the default in brackets):")
+    for dest, prompt, default, parse in missing:
+        value = ask(f"  {prompt}", default, parse) if sys.stdin.isatty() else parse(default)
+        setattr(args, dest, value)
+    if args.marker_length >= args.square_length:
+        raise SystemExit(f"marker size ({args.marker_length * 1000:.1f}mm) must be smaller than the "
+                         f"square size ({args.square_length * 1000:.1f}mm)")
 
 
 def open_camera(device):
@@ -125,24 +199,29 @@ def main():
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=800)
     ap.add_argument("--fourcc", default="MJPG")
-    ap.add_argument("--squares-x", type=int, default=5)
-    ap.add_argument("--squares-y", type=int, default=7)
-    ap.add_argument("--square-length", type=float, default=0.035, help="meters")
-    ap.add_argument("--marker-length", type=float, default=0.026, help="meters")
-    ap.add_argument("--dict", default="DICT_4X4_50", help="cv2.aruco dictionary name")
+    # Board settings: any left out are asked for interactively (defaults: 5x7, 35mm/26mm, 4x4).
+    ap.add_argument("--squares-x", type=int, help="board width in squares")
+    ap.add_argument("--squares-y", type=int, help="board height in squares")
+    ap.add_argument("--square-length", type=parse_length,
+                    help="square size / pattern spacing, e.g. 1.00in or 25mm (bare number = meters)")
+    ap.add_argument("--marker-length", type=parse_length, help="marker size, e.g. 0.75in or 19mm")
+    ap.add_argument("--dict", type=parse_dict, help="tag family: 4x4/5x5/6x6/7x7, or a cv2.aruco name")
+    ap.add_argument("--legacy", action=argparse.BooleanOptionalAction,
+                    help="old ChArUco layout (PhotonVision's 'Use old pattern' / pre-4.6 OpenCV boards)")
     ap.add_argument("--min-captures", type=int, default=15)
     ap.add_argument("--out-dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibrations"))
     ap.add_argument("--generate-board", metavar="PATH", help="write a printable board image to PATH and exit")
     ap.add_argument("--dpi", type=int, default=300, help="for --generate-board")
     args = ap.parse_args()
 
-    dict_id = getattr(cv2.aruco, args.dict, None)
-    if dict_id is None:
-        raise SystemExit(f"unknown --dict {args.dict!r} (expected something like DICT_4X4_50, DICT_5X5_100, ...)")
-    dictionary = cv2.aruco.getPredefinedDictionary(dict_id)
+    resolve_board_args(args)
+    dictionary = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, args.dict))
     board = cv2.aruco.CharucoBoard(
         (args.squares_x, args.squares_y), args.square_length, args.marker_length, dictionary
     )
+    board.setLegacyPattern(args.legacy)
+    print(f"board: {args.squares_x}x{args.squares_y} squares, square {board.getSquareLength() * 1000:.1f}mm, "
+          f"marker {board.getMarkerLength() * 1000:.1f}mm, {args.dict}{', legacy pattern' if args.legacy else ''}")
 
     if args.generate_board:
         generate_board(board, args.generate_board, args.dpi)
