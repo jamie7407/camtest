@@ -23,8 +23,8 @@ class VisionObservation:
     cameraId: wpistruct.int32  # index into the coprocessor's camera list
     robotPose: Pose3d  # field-relative robot pose (WPILib blue-origin coordinates)
     ageSeconds: wpistruct.double  # publish time minus capture time
-    xyStdDev: wpistruct.double  # meters
-    thetaStdDev: wpistruct.double  # radians (inf = don't trust vision heading)
+    stdDevFactor: wpistruct.double  # avgTagDistance^2 / tagCount^2 * camera std_dev_factor;
+    #                                 the robot multiplies by its tunable coefficients
     tagCount: wpistruct.int32
     avgTagDistance: wpistruct.double  # meters, camera to tags
     ambiguity: wpistruct.double  # single-tag only; 0 for multi-tag
