@@ -1,6 +1,19 @@
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Offline install files for the Pi (download again when needed)
+coprocessor/wheels/
+v4l-debs/
+
+# Per-camera data
 coprocessor/calibrations
-coprocessor/camera_0.jpg
-coprocessor/camera_1.jpg
-coprocessor/camera_2.jpg
-coprocessor/camera_3.jpg
+coprocessor/camera_*.jpg
+
+# Temp files from the atomic config/calibration writes (left behind only if a write is interrupted)
+.config-*.json
+.calib-*.json
