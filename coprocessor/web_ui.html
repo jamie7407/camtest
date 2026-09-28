@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vision Camera</title>
+<style>
+  :root {
+    --bg: #101214; --panel: #1a1d21; --line: #2c3036; --text: #e4e6e9; --muted: #8b929b;
+    --accent: #4da3ff; --good: #3ecf6e; --warn: #f0a33a; --bad: #ff5c5c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+           border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  #camsel { font-size: 16px; font-weight: 600; padding: 4px 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .dot.ok { background: var(--good); } .dot.bad { background: var(--bad); }
+  .stats { color: var(--muted); font-variant-numeric: tabular-nums; display: flex; gap: 14px; flex-wrap: wrap; }
+  .stats b { color: var(--text); font-weight: 600; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line);
+           color: var(--muted); font-variant-numeric: tabular-nums; }
+  .badge.good { color: var(--good); border-color: var(--good); }
+  .badge.bad { color: var(--bad); border-color: var(--bad); }
+  .badge.warn { color: var(--warn); border-color: var(--warn); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .view { min-width: 0; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .tabs button { background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+                 padding: 6px 12px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .tabs button.on { color: var(--text); border-color: var(--accent); }
+  .view img { width: 100%; display: block; background: #000; border-radius: 6px; min-height: 120px; }
+  .msg { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: var(--panel);
+         border: 1px solid var(--line); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .msg.reject { border-color: var(--warn); color: var(--warn); }
+  .msg.pose { border-color: var(--good); color: var(--good); }
+  .msg.bad { border-color: var(--bad); color: var(--bad); }
+  aside, #groups { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  section h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+               display: flex; justify-content: space-between; gap: 8px; }
+  section h2 small { color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .row { margin-bottom: 12px; } .row:last-child { margin-bottom: 0; }
+  .row .top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .row label.name { flex: 1; }
+  .hint { color: var(--muted); font-size: 12px; }
+  input[type=number], select { width: 84px; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+                               border-radius: 4px; padding: 3px 6px; font: inherit; text-align: right; }
+  select { width: auto; max-width: 100%; text-align: left; }
+  .row input[type=range] { width: 100%; accent-color: var(--accent); }
+  input:disabled { opacity: .4; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  .auto { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .savebar { display: flex; align-items: center; gap: 10px; }
+  button.primary, button.secondary, button.danger {
+    border: 0; border-radius: 6px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; }
+  button.secondary { background: var(--bg); color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  button.danger { background: transparent; color: var(--bad); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .45; cursor: default; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  #status { color: var(--muted); } #status.dirty { color: var(--warn); } #status.err { color: var(--bad); }
+  .grid2 { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; }
+  .progress { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin: 4px 0 10px; }
+  .progress > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  .progress.done > div { background: var(--good); }
+  .kv { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+  .kv span:first-child { color: var(--muted); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+  .chip { padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--bg);
+          border: 1px solid var(--line); color: var(--muted); }
+  .chip.ok { color: var(--good); border-color: var(--good); }
+  .bighint { font-size: 15px; font-weight: 600; margin: 6px 0; }
+  .rms { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .note { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .note.ok { color: var(--good); } .note.bad { color: var(--bad); }
+  svg.bars { width: 100%; height: 70px; display: block; margin: 6px 0; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="conn"></span>
+  <select id="camsel" title="Switch camera"><option id="name">camera</option></select>
+  <span class="badge" id="calbadge">–</span>
+  <div class="stats">
+    <span title="frames the camera delivers"><b id="camfps">–</b> camera fps</span>
+    <span title="frames run through detection"><b id="fps">–</b> processed</span>
+    <span><b id="tagfps">–</b> tag fps</span>
+    <span>detect <b id="proc">–</b> ms</span>
+  </div>
+</header>
+<main>
+  <div class="view">
+    <div class="tabs">
+      <button data-src="/stream.mjpg" class="on">Annotated</button>
+      <button data-src="/raw.mjpg">Raw</button>
+    </div>
+    <img id="stream" src="/stream.mjpg" alt="camera stream">
+    <div class="msg" id="result">waiting for data…</div>
+  </div>
+  <aside>
+    <section>
+      <div class="savebar">
+        <button class="primary" id="save">Save to config</button>
+        <span id="status">–</span>
+      </div>
+    </section>
+
+    <!-- Calibration -->
+    <section id="calsec">
+      <h2><span>Calibration</span><small id="calres">this camera</small></h2>
+
+      <div id="cal-idle">
+        <div class="msg" id="calcurrent">–</div>
+        <div class="row" style="margin-top:12px">
+          <div class="top"><label class="name">Board preset</label>
+            <select id="preset">
+              <option value="">Custom</option>
+              <option value="6328">6328 Northstar: 12×9, 5×5, 30/23 mm</option>
+              <option value="pv">PhotonVision: 8×8, 4×4, 1.00/0.75 in</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2">
+          <label>Squares wide</label><input type="number" id="b_sx" min="3" max="30" step="1">
+          <label>Squares tall</label><input type="number" id="b_sy" min="3" max="30" step="1">
+          <label>Square size (mm)</label><input type="number" id="b_sq" min="1" max="200" step="0.1">
+          <label>Marker size (mm)</label><input type="number" id="b_mk" min="1" max="200" step="0.1">
+          <label>Tag family</label>
+          <select id="b_dict">
+            <option>DICT_4X4_50</option><option>DICT_4X4_100</option><option>DICT_4X4_250</option><option>DICT_4X4_1000</option>
+            <option>DICT_5X5_50</option><option>DICT_5X5_100</option><option>DICT_5X5_250</option><option>DICT_5X5_1000</option>
+            <option>DICT_6X6_50</option><option>DICT_6X6_100</option><option>DICT_6X6_250</option><option>DICT_6X6_1000</option>
+            <option>DICT_7X7_50</option><option>DICT_7X7_100</option><option>DICT_7X7_250</option><option>DICT_7X7_1000</option>
+          </select>
+          <label>Old (legacy) pattern</label><input type="checkbox" id="b_legacy">
+          <label>Wide-angle lens (8-coeff model)</label><input type="checkbox" id="wide">
+        </div>
+        <div class="note" id="boardsize">–</div>
+        <div class="btns">
+          <button class="primary" id="calstart">Start calibration</button>
+          <button class="secondary" id="printboard">Print board</button>
+        </div>
+      </div>
+
+      <div id="cal-active" hidden>
+        <div class="bighint" id="calhint">–</div>
+        <div class="kv"><span>Views</span><span id="calviews">–</span></div>
+        <div class="progress" id="viewsbar"><div></div></div>
+        <div class="kv"><span>Frame coverage</span><span id="calcov">–</span></div>
+        <div class="progress" id="covbar"><div></div></div>
+        <div class="kv"><span>Tilted views (need 2 each)</span></div>
+        <div class="chips" id="tilts"></div>
+        <label class="auto" style="font-size:13px;color:var(--text)"><input type="checkbox" id="autocap" checked>
+          Auto-capture when the board is held still in a new pose</label>
+        <div class="btns">
+          <button class="secondary" id="capture">Capture now</button>
+          <button class="secondary" id="undo">Undo</button>
+          <button class="secondary" id="clear">Clear</button>
+        </div>
+        <div class="btns">
+          <button class="primary" id="calibrate">Calibrate</button>
+          <button class="danger" id="calcancel">Cancel</button>
+        </div>
+        <div class="note" id="calmsg"></div>
+      </div>
+
+      <div id="cal-result" hidden>
+        <div class="kv"><span>Reprojection error (RMS)</span><span id="rverdict"></span></div>
+        <div class="rms" id="rrms">–</div>
+        <svg class="bars" id="rbars" viewBox="0 0 300 70" preserveAspectRatio="none"></svg>
+        <div class="hint" style="margin-bottom:8px">Error per view. Red = dropped as an outlier.</div>
+        <div class="kv"><span>Focal length fx / fy</span><span id="rf">–</span></div>
+        <div class="kv"><span>Principal point cx / cy</span><span id="rc">–</span></div>
+        <div class="kv"><span>Field of view</span><span id="rfov">–</span></div>
+        <div class="kv"><span>Model</span><span id="rmodel">–</span></div>
+        <div class="kv"><span>Views used</span><span id="rviews">–</span></div>
+        <label class="auto" style="font-size:13px;color:var(--text);margin-top:10px">
+          <input type="checkbox" id="preview"> Preview undistorted (straight lines should look straight)</label>
+        <div class="btns">
+          <button class="primary" id="calsave">Save calibration</button>
+          <button class="secondary" id="discard">Discard, keep capturing</button>
+          <button class="danger" id="calcancel2">Cancel</button>
+        </div>
+        <div class="note" id="calmsg2"></div>
+      </div>
+    </section>
+
+    <div id="groups"></div>
+  </aside>
+</main>
+<script>
+// Settings shown in the panel. Keys match settings.py (GLOBAL_SETTINGS / CAMERA_SETTINGS).
+// "auto" settings use null for auto; exposure/gain ranges are replaced by the camera's own.
+const SPEC = [
+  { group: "Camera", note: "this camera only", items: [
+    { k: "resolution", label: "Resolution", select: true,
+      hint: "Each resolution needs its own calibration. 16:13 = the OV2311's full sensor." },
+    { k: "exposure", label: "Exposure", min: 1, max: 1000, step: 1, auto: true, log: true, start: 20,
+      hint: "Lower = less motion blur. Tune while waving a tag." },
+    { k: "gain", label: "Gain", min: 0, max: 100, step: 1, auto: true, start: 0,
+      hint: "Raise if the image is too dark at low exposure." },
+    { k: "std_dev_factor", label: "Std dev factor", min: 0.1, max: 5, step: 0.1,
+      hint: "Higher = robot trusts this camera less." },
+  ]},
+  { group: "Detector", note: "all cameras", items: [
+    { k: "quad_decimate", label: "Quad decimate", min: 1, max: 4, step: 0.5,
+      hint: "Higher = faster detection, shorter range." },
+    { k: "min_cluster_pixels", label: "Min cluster pixels", min: 0, max: 500, step: 5 },
+  ]},
+  { group: "Filters", note: "all cameras", items: [
+    { k: "min_decision_margin", label: "Min decision margin", min: 0, max: 100, step: 1 },
+    { k: "max_single_tag_ambiguity", label: "Max single-tag ambiguity", min: 0, max: 1, step: 0.01 },
+    { k: "max_tag_distance_m", label: "Max tag distance (m)", min: 0.5, max: 10, step: 0.1 },
+  ]},
+  { group: "Stream", note: "all cameras", items: [
+    { k: "stream_max_fps", label: "Stream max FPS", min: 1, max: 60, step: 1 },
+  ]},
+];
+// Used when the camera can't list its modes (no v4l2-ctl, or a test video).
+const FALLBACK_MODES = [[1600, 1300], [1600, 1200], [1280, 800], [1280, 720], [800, 650], [800, 600], [640, 480]];
+const PRESETS = {
+  "6328": { board_squares_x: 12, board_squares_y: 9, board_square_length_m: 0.030,
+            board_marker_length_m: 0.023, board_dict: "DICT_5X5_1000", board_legacy: false },
+  "pv":   { board_squares_x: 8, board_squares_y: 8, board_square_length_m: 0.0254,
+            board_marker_length_m: 0.01905, board_dict: "DICT_4X4_1000", board_legacy: false },
+};
+
+const $ = (id) => document.getElementById(id);
+// Each camera serves its own API/stream on its own port; this page can drive any of them.
+let BASE = "";                 // "" = the camera that served this page
+let gen = 0;                   // bumps on camera switch so stale poll results are ignored
+const api = (path) => BASE + path;
+const controls = {};           // key -> {item, set(value), busy()}
+const lastSent = {};           // key -> time we last sent it (don't let a stale poll overwrite)
+let rangesApplied = false;
+let modesKey = "";
+
+// Log-scale slider for exposure: slider 0..1000 <-> min..max.
+const LOG_STEPS = 1000;
+const toSlider = (it, v) => it.log
+  ? Math.round(Math.log(v / it.min) / Math.log(it.max / it.min) * LOG_STEPS) : v;
+const fromSlider = (it, p) => it.log
+  ? Math.round(it.min * Math.pow(it.max / it.min, p / LOG_STEPS)) : Number(p);
+const clamp = (it, v) => Math.min(it.max, Math.max(it.min, v));
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+const aspect = (w, h) => { const g = gcd(w, h); return `${w / g}:${h / g}`; };
+
+const pending = {};
+let sendTimer = null;
+function send(k, v) {
+  pending[k] = v;
+  lastSent[k] = Date.now();
+  clearTimeout(sendTimer);
+  sendTimer = setTimeout(() => {
+    const body = JSON.stringify(pending);
+    for (const key in pending) delete pending[key];
+    fetch(api("/api/set"), { method: "POST", body }).catch(() => {});
+  }, 80);
+}
+const calib = (op, extra = {}) =>
+  fetch(api("/api/calib"), { method: "POST", body: JSON.stringify({ op, ...extra }) }).then(poll).catch(() => {});
+
+function buildRow(it) {
+  const row = document.createElement("div");
+  row.className = "row";
+  const top = document.createElement("div");
+  top.className = "top";
+  const name = document.createElement("label");
+  name.className = "name";
+  name.textContent = it.label;
+  top.appendChild(name);
+  row.appendChild(top);
+
+  if (it.select) {
+    const sel = document.createElement("select");
+    sel.onchange = () => send(it.k, sel.value);
+    top.appendChild(sel);
+    controls[it.k] = { item: it, el: sel, set: (v) => { sel.value = v; }, busy: () => document.activeElement === sel };
+  } else if (it.bool) {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.onchange = () => send(it.k, cb.checked);
+    top.appendChild(cb);
+    controls[it.k] = { item: it, set: (v) => { cb.checked = !!v; }, busy: () => false };
+  } else {
+    const num = document.createElement("input");
+    num.type = "number"; num.step = it.step;
+    const slider = document.createElement("input");
+    slider.type = "range";
+    let autoCb = null, dragging = false;
+
+    const setLimits = () => {
+      num.min = it.min; num.max = it.max;
+      slider.min = it.log ? 0 : it.min;
+      slider.max = it.log ? LOG_STEPS : it.max;
+      slider.step = it.log ? 1 : it.step;
+    };
+    setLimits();
+    const setEnabled = (on) => { num.disabled = slider.disabled = !on; };
+
+    slider.oninput = () => { dragging = true; const v = fromSlider(it, slider.value); num.value = v; send(it.k, v); };
+    slider.onchange = () => { dragging = false; };
+    num.onchange = () => {
+      if (num.value === "") return;
+      const v = clamp(it, Number(num.value));
+      num.value = v; slider.value = toSlider(it, v); send(it.k, v);
+    };
+    top.appendChild(num);
+
+    if (it.auto) {
+      const lab = document.createElement("label");
+      lab.className = "auto";
+      autoCb = document.createElement("input");
+      autoCb.type = "checkbox";
+      autoCb.onchange = () => {
+        setEnabled(!autoCb.checked);
+        if (!autoCb.checked && num.value === "") {  // first switch to manual: sensible start
+          num.value = clamp(it, it.start ?? it.min); slider.value = toSlider(it, Number(num.value));
+        }
+        send(it.k, autoCb.checked ? null : clamp(it, Number(num.value)));
+      };
+      lab.append(autoCb, "Auto");
+      top.appendChild(lab);
+    }
+    row.appendChild(slider);
+    controls[it.k] = {
+      item: it, setLimits,
+      set: (v) => {
+        const isAuto = v === null || v === undefined || (it.auto && v < 0);
+        if (autoCb) autoCb.checked = isAuto;
+        setEnabled(!isAuto);
+        if (!isAuto) { num.value = Math.round(v * 1000) / 1000; slider.value = toSlider(it, clamp(it, v)); }
+      },
+      busy: () => dragging || document.activeElement === num,
+    };
+  }
+  if (it.hint) {
+    const h = document.createElement("div");
+    h.className = "hint"; h.textContent = it.hint;
+    row.appendChild(h);
+  }
+  return row;
+}
+
+for (const g of SPEC) {
+  const sec = document.createElement("section");
+  const h = document.createElement("h2");
+  h.innerHTML = `<span>${g.group}</span><small>${g.note}</small>`;
+  sec.appendChild(h);
+  for (const it of g.items) sec.appendChild(buildRow(it));
+  $("groups").appendChild(sec);
+}
+
+function fillModes(modes, current) {
+  const list = modes && modes.length ? modes.map((m) => [m.width, m.height, m.fps])
+                                     : FALLBACK_MODES.map(([w, h]) => [w, h, null]);
+  if (current && !list.some(([w, h]) => `${w}x${h}` === current)) {
+    const [w, h] = current.split("x").map(Number); list.unshift([w, h, null]);
+  }
+  const key = JSON.stringify(list);
+  if (key === modesKey) return;
+  modesKey = key;
+  const sel = controls.resolution.el;
+  sel.innerHTML = "";
+  // 16:13 (full OV2311 sensor) first.
+  list.sort((a, b) => (aspect(b[0], b[1]) === "16:13") - (aspect(a[0], a[1]) === "16:13") || b[0] * b[1] - a[0] * a[1]);
+  for (const [w, h, fps] of list) {
+    const o = document.createElement("option");
+    const ar = aspect(w, h);
+    o.value = `${w}x${h}`;
+    o.textContent = `${w}×${h}  ${ar === "16:13" ? "16:13 full sensor" : ar}${fps ? ` · ${Math.round(fps)} fps` : ""}`;
+    sel.appendChild(o);
+  }
+}
+
+// ---- board settings ----
+const boardInputs = {
+  board_squares_x: [$("b_sx"), (v) => v, (x) => Number(x)],
+  board_squares_y: [$("b_sy"), (v) => v, (x) => Number(x)],
+  board_square_length_m: [$("b_sq"), (v) => +(v * 1000).toFixed(2), (x) => Number(x) / 1000],
+  board_marker_length_m: [$("b_mk"), (v) => +(v * 1000).toFixed(2), (x) => Number(x) / 1000],
+  board_dict: [$("b_dict"), (v) => v, (x) => x],
+  board_legacy: [$("b_legacy"), (v) => v, (x) => x],
+};
+for (const [k, [el, , fromUi]] of Object.entries(boardInputs)) {
+  el.onchange = () => { send(k, fromUi(el.type === "checkbox" ? el.checked : el.value)); $("preset").value = ""; };
+}
+$("preset").onchange = () => {
+  const p = PRESETS[$("preset").value];
+  if (!p) return;
+  for (const [k, v] of Object.entries(p)) {
+    const [el, toUi] = boardInputs[k];
+    if (el.type === "checkbox") el.checked = v; else el.value = toUi(v);
+    send(k, v);
+  }
+};
+function showBoard(vals) {
+  for (const [k, [el, toUi]] of Object.entries(boardInputs)) {
+    if (!(k in vals) || document.activeElement === el || Date.now() - (lastSent[k] || 0) < 1500) continue;
+    if (el.type === "checkbox") el.checked = !!vals[k]; else el.value = toUi(vals[k]);
+  }
+  if (document.activeElement !== $("preset")) {
+    const match = Object.entries(PRESETS).find(([, p]) =>
+      Object.entries(p).every(([k, v]) => typeof v === "number" ? Math.abs(vals[k] - v) < 1e-6 : vals[k] === v));
+    $("preset").value = match ? match[0] : "";
+  }
+  const sx = vals.board_squares_x, sy = vals.board_squares_y, sq = vals.board_square_length_m;
+  if (sx && sy && sq) {
+    const w = sx * sq * 1000, h = sy * sq * 1000;
+    const fitsLetter = (w <= 203 && h <= 267) || (w <= 267 && h <= 203);
+    $("boardsize").textContent = `Printed board: ${w.toFixed(0)} × ${h.toFixed(0)} mm` +
+      (fitsLetter ? " (fits letter paper)." : ". Bigger than letter: print on tabloid/11×17 or show it full-screen on a flat monitor.") +
+      " Print at 100% scale and measure a square.";
+  }
+}
+$("printboard").onclick = () => window.open(api("/api/board.png?t=" + Date.now()), "_blank");
+
+// ---- calibration buttons ----
+$("calstart").onclick = () => { selectTab("/stream.mjpg"); calib("start", { wide_lens: $("wide").checked }); };
+$("capture").onclick = () => calib("capture");
+$("undo").onclick = () => calib("undo");
+$("clear").onclick = () => { if (confirm("Clear all captured views?")) calib("clear"); };
+$("calibrate").onclick = () => calib("calibrate");
+$("calcancel").onclick = $("calcancel2").onclick = () => { if (confirm("Cancel calibration? Captured views are lost.")) calib("stop"); };
+$("autocap").onchange = () => calib("auto", { on: $("autocap").checked });
+$("discard").onclick = () => calib("discard");
+$("preview").onchange = () => calib("preview", { on: $("preview").checked });
+$("calsave").onclick = () => calib("save");
+
+let tabSrc = "/stream.mjpg";
+function selectTab(src, force = false) {
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x.dataset.src === src));
+  if (force || src !== tabSrc) { tabSrc = src; $("stream").src = api(src); }
+}
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => selectTab(b.dataset.src));
+
+$("save").onclick = async () => {
+  $("save").disabled = true;
+  try { await fetch(api("/api/save"), { method: "POST", body: "{}" }); } catch (e) {}
+  setTimeout(() => { $("save").disabled = false; }, 600);
+};
+
+const fmt = (v, d) => (typeof v === "number" ? v.toFixed(d) : "–");
+function setProgress(id, frac) {
+  $(id).firstElementChild.style.width = `${Math.min(100, frac * 100)}%`;
+  $(id).classList.toggle("done", frac >= 1);
+}
+
+function showCalibration(s) {
+  const c = s.calibration, info = s.calib_info, st = s.stats || {};
+  const res = st.resolution || (s.values || {}).resolution || "";
+  $("calres").textContent = res ? `this camera · ${res}` : "this camera";
+  $("cal-idle").hidden = !!c;
+  $("cal-active").hidden = !c || c.state === "result";
+  $("cal-result").hidden = !c || c.state !== "result";
+
+  // Header badge + current calibration.
+  const badge = $("calbadge");
+  if (c) { badge.className = "badge warn"; badge.textContent = "CALIBRATING"; }
+  else if (info) { badge.className = "badge good"; badge.textContent = `Calibrated ${res}${info.rms != null ? ` · ${info.rms.toFixed(2)} px` : ""}`; }
+  else if (st.calibrated === false) { badge.className = "badge bad"; badge.textContent = `NOT CALIBRATED ${res}`; }
+  const cur = $("calcurrent");
+  if (info) {
+    cur.className = "msg pose";
+    cur.textContent = `Using ${info.file}` + (info.rms != null ? ` · RMS ${info.rms.toFixed(3)} px` : "") +
+      (info.calibrated_at ? ` · ${info.calibrated_at.replace("T", " ")}` : "");
+  } else {
+    cur.className = "msg bad";
+    cur.textContent = `No calibration for ${res || "this resolution"}. Tags are detected but no poses are sent until you calibrate.`;
+  }
+  if (s.calib_msg && !c) { cur.textContent += `  (${s.calib_msg})`; }
+  if (!c) return;
+
+  if (c.state !== "result") {
+    $("calhint").textContent = c.hint;
+    $("calviews").textContent = `${c.views} / ${c.min_views}`;
+    setProgress("viewsbar", c.views / c.min_views);
+    $("calcov").textContent = `${Math.round(c.coverage * 100)}% (aim ${Math.round(c.good_coverage * 100)}%+)`;
+    setProgress("covbar", c.coverage / c.good_coverage);
+    $("tilts").innerHTML = ["left", "right", "up", "down"]
+      .map((k) => `<span class="chip ${c.tilts[k] >= 2 ? "ok" : ""}">${k} ${c.tilts[k]}</span>`).join("");
+    if (document.activeElement !== $("autocap")) $("autocap").checked = c.auto;
+    const busy = c.state === "calibrating";
+    $("calibrate").disabled = busy || !c.ready;
+    $("calibrate").textContent = busy ? "Calibrating…" : "Calibrate";
+    ["capture", "undo", "clear"].forEach((id) => { $(id).disabled = busy; });
+    $("calmsg").textContent = c.message || "";
+    $("calmsg").className = "note" + (/fail/.test(c.message) ? " bad" : "");
+    return;
+  }
+
+  const r = c.result;
+  $("rrms").textContent = `${r.rms.toFixed(3)} px`;
+  $("rverdict").textContent = r.verdict;
+  $("rverdict").style.color = r.rms < 0.6 ? "var(--good)" : r.rms < 1 ? "var(--warn)" : "var(--bad)";
+  $("rf").textContent = `${r.fx.toFixed(1)} ± ${r.std.fx.toFixed(2)} / ${r.fy.toFixed(1)} ± ${r.std.fy.toFixed(2)}`;
+  $("rc").textContent = `${r.cx.toFixed(1)} ± ${r.std.cx.toFixed(2)} / ${r.cy.toFixed(1)} ± ${r.std.cy.toFixed(2)}`;
+  $("rfov").textContent = `${r.fov_h_deg.toFixed(1)}° × ${r.fov_v_deg.toFixed(1)}°`;
+  $("rmodel").textContent = r.model;
+  $("rviews").textContent = `${r.views_used}` + (r.removed.length ? ` (${r.removed.length} outliers dropped)` : "");
+  const pv = r.per_view, max = Math.max(...pv, 1), bw = 300 / pv.length;
+  $("rbars").innerHTML = pv.map((e, i) => {
+    const h = Math.max(1, (e / max) * 66);
+    const col = r.removed.includes(i) ? "#ff5c5c" : e < 0.6 ? "#3ecf6e" : "#f0a33a";
+    return `<rect x="${i * bw + bw * 0.15}" y="${70 - h}" width="${bw * 0.7}" height="${h}" fill="${col}"><title>view ${i + 1}: ${e.toFixed(3)} px</title></rect>`;
+  }).join("");
+  if (document.activeElement !== $("preview")) $("preview").checked = c.preview;
+  $("calmsg2").textContent = c.message || "";
+}
+
+// Original slider limits, restored on switch (each camera replaces them with its own).
+const SPEC_LIMITS = Object.fromEntries(Object.entries(controls).map(([k, c]) => [k, [c.item.min, c.item.max]]));
+let cameras = [];
+
+function fillCameras(list, current) {
+  if (!list || !list.length || JSON.stringify(list) === JSON.stringify(cameras)) return;
+  cameras = list;
+  const sel = $("camsel");
+  sel.innerHTML = "";
+  for (const c of list) {
+    const o = document.createElement("option");
+    o.value = c.port; o.textContent = c.name;
+    sel.appendChild(o);
+  }
+  sel.value = current;
+  sel.disabled = list.length < 2;
+  // Open the camera named in the URL (#cam=right_cam), e.g. after a reload.
+  const want = new URLSearchParams(location.hash.slice(1)).get("cam");
+  const target = list.find((c) => c.name === want);
+  if (target && String(target.port) !== String(current)) switchCamera(target.port);
+}
+
+function switchCamera(port) {
+  const own = location.port || (location.protocol === "https:" ? "443" : "80");
+  BASE = String(port) === own ? "" : `${location.protocol}//${location.hostname}:${port}`;
+  gen++;
+  rangesApplied = false; modesKey = "";
+  for (const k in lastSent) delete lastSent[k];
+  for (const [k, [mn, mx]] of Object.entries(SPEC_LIMITS)) {
+    const c = controls[k];
+    c.item.min = mn; c.item.max = mx;
+    if (c.setLimits) c.setLimits();
+  }
+  const cam = cameras.find((c) => String(c.port) === String(port));
+  if (cam) history.replaceState(null, "", `#cam=${encodeURIComponent(cam.name)}`);
+  $("camsel").value = port;
+  $("result").className = "msg"; $("result").textContent = "switching camera…";
+  selectTab(tabSrc, true);
+  poll();
+}
+$("camsel").onchange = () => switchCamera($("camsel").value);
+
+async function poll() {
+  const myGen = gen;
+  try {
+    const s = await (await fetch(api("/api/state"), { cache: "no-store" })).json();
+    if (myGen !== gen) return;  // camera switched while this was in flight
+    fillCameras(s.cameras, BASE ? $("camsel").value : location.port);
+    if (myGen !== gen) return;  // fillCameras switched to the camera in the URL
+    if (!s.cameras || !s.cameras.length) $("name").textContent = s.name || "camera";
+    document.title = `${s.name || "Camera"} · Vision`;
+
+    if (!rangesApplied && s.ranges) {  // use the camera's real exposure/gain limits
+      for (const k of ["exposure", "gain"]) {
+        const r = s.ranges[k], c = controls[k];
+        if (r && c) { c.item.min = Math.max(r[0], c.item.log ? 1 : r[0]); c.item.max = r[1]; c.setLimits(); }
+      }
+      rangesApplied = true;
+    }
+
+    const vals = s.values || {};
+    fillModes(s.modes, vals.resolution);
+    for (const k in controls) {
+      if (!(k in vals)) continue;
+      if (controls[k].busy() || Date.now() - (lastSent[k] || 0) < 1500) continue;
+      controls[k].set(vals[k]);
+    }
+    showBoard(vals);
+
+    const st = vals._status || "–";
+    $("status").textContent = st;
+    $("status").className = st.startsWith("unsaved") ? "dirty" : st.includes("fail") ? "err" : "";
+
+    const t = s.stats || {};
+    $("conn").className = "dot " + (t.connected ? "ok" : "bad");
+    $("fps").textContent = fmt(t.fps, 0);
+    $("camfps").textContent = fmt(t.cameraFps, 0);
+    $("tagfps").textContent = fmt(t.tagFps, 0);
+    $("proc").textContent = fmt(t.processMs, 1);
+    const r = $("result");
+    if (s.calibration) { r.className = "msg"; r.textContent = "Calibrating: pose output paused for this camera."; }
+    else if (t.pose) { r.className = "msg pose"; r.textContent = "Pose: " + t.pose; }
+    else if (t.lastReject) { r.className = "msg reject"; r.textContent = "Last reject: " + t.lastReject; }
+    else { r.className = "msg"; r.textContent = t.connected === false ? "camera not connected" : "no tags seen"; }
+    showCalibration(s);
+  } catch (e) {
+    if (myGen === gen) $("conn").className = "dot bad";
+  }
+}
+poll();
+setInterval(poll, 500);
+</script>
+</body>
+</html>
