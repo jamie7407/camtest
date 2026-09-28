@@ -66,11 +66,14 @@ def main():
     q = ctx.Queue(maxsize=256)
     procs, ctrls = {}, {}
 
+    # Every camera's page lists all cameras so one page can switch between them.
+    peers = [{"name": c.name, "port": c.stream_port} for c in cfg.cameras]
+
     def start(cam):
         ctrls[cam.id] = ctx.Queue()
         p = ctx.Process(target=run_camera, name=cam.name, daemon=True,
                         args=(cam, cfg.field_layout, cfg.detector, cfg.solver, cfg.stream,
-                              q, ctrls[cam.id]))
+                              q, ctrls[cam.id], peers))
         p.start()
         procs[cam.id] = p
 
@@ -115,6 +118,9 @@ def main():
             "streamFps": t.getDoubleTopic("streamFps").publish(),
             "streamViewers": t.getIntegerTopic("streamViewers").publish(),
             "lastReject": t.getStringTopic("lastReject").publish(),
+            # Same pose as in the batched topic, as a plain Pose3d so AdvantageScope can
+            # drag it straight onto a field view. Debug only; the robot reads the batch.
+            "robotPose": t.getStructTopic("robotPose", Pose3d).publish(),
         }
 
     # Register streams where Elastic / Shuffleboard look for cameras.
@@ -135,20 +141,30 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
+    # Give every camera the full current settings so its web page can show them
+    # (after that it only receives changes).
+    for cam in cfg.cameras:
+        ctrls[cam.id].put({**settings.full_camera_settings(cam.id), "_status": settings.status_text})
+    last_status = settings.status_text
+
     heartbeat = 0
     last_health = last_settings = 0.0
 
     def handle(msg, batch):
         if msg[0] == "obs":
-            (_, cam_id, cap_t, x, y, z, qw, qx, qy, qz, xy, th, n, dist, amb, mask) = msg
+            (_, cam_id, cap_t, x, y, z, qw, qx, qy, qz, factor, n, dist, amb, mask) = msg
             batch.append((cam_id, cap_t, Pose3d(Translation3d(x, y, z),
-                          Rotation3d(Quaternion(qw, qx, qy, qz))), xy, th, n, dist, amb, mask))
+                          Rotation3d(Quaternion(qw, qx, qy, qz))), factor, n, dist, amb, mask))
         elif msg[0] == "stats":
             _, cam_id, connected, fps, proc_ms, tag_fps, stream_fps, viewers, reject = msg
             p = stat_pubs[cam_id]
             p["connected"].set(bool(connected)); p["fps"].set(fps); p["processMs"].set(proc_ms)
             p["tagFps"].set(tag_fps); p["streamFps"].set(stream_fps)
             p["streamViewers"].set(viewers); p["lastReject"].set(reject)
+        elif msg[0] == "set":  # from a camera's web settings page
+            settings.set_from_web(msg[1], msg[2])
+        elif msg[0] == "save":
+            settings.request_save()
 
     while True:
         batch = []
@@ -162,10 +178,12 @@ def main():
         if batch:
             now_mono = time.monotonic()
             obs_pub.set(
-                [VisionObservation(cam_id, pose, now_mono - cap_t, xy, th, n, dist, amb, mask)
-                 for cam_id, cap_t, pose, xy, th, n, dist, amb, mask in batch],
+                [VisionObservation(cam_id, pose, now_mono - cap_t, factor, n, dist, amb, mask)
+                 for cam_id, cap_t, pose, factor, n, dist, amb, mask in batch],
                 ntcore._now(),
             )
+            for cam_id, _cap_t, pose, *_ in batch:
+                stat_pubs[cam_id]["robotPose"].set(pose)
 
         now = time.monotonic()
         if now - last_settings > 0.1:  # live settings -> camera processes
@@ -175,6 +193,10 @@ def main():
                 msg = {**g, **per_cam.get(cam.id, {})}
                 if msg:
                     ctrls[cam.id].put(msg)
+            if settings.status_text != last_status:  # "unsaved changes" / "saved ..." on the web pages
+                last_status = settings.status_text
+                for cam in cfg.cameras:
+                    ctrls[cam.id].put({"_status": last_status})
 
         if now - last_health > 1.0:
             last_health = now
@@ -184,7 +206,7 @@ def main():
                 if not procs[cam.id].is_alive():
                     print(f"[{cam.name}] process died, restarting", flush=True)
                     start(cam)
-                    ctrls[cam.id].put(settings.full_camera_settings(cam.id))
+                    ctrls[cam.id].put({**settings.full_camera_settings(cam.id), "_status": settings.status_text})
             ips = local_ips()  # IP can change after boot (robot radio DHCP), so refresh
             if ips != last_ips:
                 last_ips = ips

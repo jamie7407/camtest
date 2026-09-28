@@ -111,7 +111,7 @@ def main():
         xy_err = math.hypot(est.X() - robot.X(), est.Y() - robot.Y())
         yaw_err = abs(math.remainder(est.rotation().Z() - robot.rotation().Z(), 2 * math.pi))
         kind = "single" if len(res.tag_ids) == 1 else "multi"
-        results[kind].append((xy_err, math.degrees(yaw_err), res.avg_tag_distance, res.xy_std_dev))
+        results[kind].append((xy_err, math.degrees(yaw_err), res.avg_tag_distance, res.std_dev_factor))
 
     print(f"Detected IDs always matched rendered IDs: {ids_ok}")
     for kind, rows in results.items():

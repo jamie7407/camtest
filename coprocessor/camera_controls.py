@@ -44,6 +44,68 @@ def _v4l2_set(device: str, **ctrls) -> bool:
     return r.returncode == 0
 
 
+def control_ranges(device) -> dict[str, tuple[float, float]]:
+    """{"exposure": (min, max), "gain": (min, max)} as reported by the driver, for the
+    web UI's sliders. Empty when v4l2-ctl isn't available (the UI then uses defaults)."""
+    if not uses_v4l2ctl(device):
+        return {}
+    try:
+        out = subprocess.run(["v4l2-ctl", "-d", device, "--list-ctrls"],
+                             capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    found = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if not parts or " 0x" not in line:
+            continue
+        kv = dict(p.split("=", 1) for p in parts if "=" in p)
+        if "min" in kv and "max" in kv:
+            found[parts[0]] = (float(kv["min"]), float(kv["max"]))
+    ranges = {}
+    for key, names in (("exposure", ("exposure_time_absolute", "exposure_absolute")), ("gain", ("gain",))):
+        name = next((n for n in names if n in found), None)
+        if name:
+            ranges[key] = found[name]
+    return ranges
+
+
+def list_modes(device, fourcc: str = "MJPG") -> list[dict]:
+    """Resolutions the camera offers in this pixel format, largest first:
+    [{"width", "height", "fps"}] (fps = the fastest rate for that size).
+    Empty when v4l2-ctl isn't available (the web UI then offers common sizes)."""
+    if not uses_v4l2ctl(device):
+        return []
+    try:
+        out = subprocess.run(["v4l2-ctl", "-d", device, "--list-formats-ext"],
+                             capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    modes: dict[tuple[int, int], float] = {}
+    in_format = False
+    size = None
+    for line in out.splitlines():
+        s = line.strip()
+        if s.startswith("[") and "'" in s:  # e.g. [0]: 'MJPG' (Motion-JPEG, compressed)
+            in_format = s.split("'")[1] == fourcc
+            size = None
+        elif in_format and s.startswith("Size:"):
+            try:
+                w, h = s.split()[-1].split("x")
+                size = (int(w), int(h))
+                modes.setdefault(size, 0.0)
+            except ValueError:
+                size = None
+        elif in_format and size and s.startswith("Interval:") and "fps)" in s:
+            try:
+                fps = float(s.rsplit("(", 1)[1].split()[0])
+                modes[size] = max(modes[size], fps)
+            except (IndexError, ValueError):
+                pass
+    return [{"width": w, "height": h, "fps": fps}
+            for (w, h), fps in sorted(modes.items(), key=lambda m: -m[0][0] * m[0][1])]
+
+
 def uses_v4l2ctl(device) -> bool:
     return (sys.platform.startswith("linux") and isinstance(device, str)
             and device.startswith("/dev/") and shutil.which("v4l2-ctl") is not None)

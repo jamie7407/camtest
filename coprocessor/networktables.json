@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "name": "/Preferences/Vision/XYStdDevCoefficient",
+    "type": "double",
+    "value": 0.05,
+    "properties": {
+      "persistent": true
+    }
+  },
+  {
+    "name": "/Preferences/Vision/ThetaStdDevCoefficient",
+    "type": "double",
+    "value": 0.03,
+    "properties": {
+      "persistent": true
+    }
+  },
+  {
+    "name": "/Preferences/Vision/TrustSingleTagTheta",
+    "type": "boolean",
+    "value": false,
+    "properties": {
+      "persistent": true
+    }
+  }
+]

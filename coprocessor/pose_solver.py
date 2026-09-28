@@ -64,9 +64,6 @@ class SolverSettings:
     max_tag_distance_m: float = 6.0
     field_border_margin_m: float = 0.5
     max_z_error_m: float = 0.75
-    xy_coefficient: float = 0.01
-    theta_coefficient: float = 0.03
-    trust_single_tag_theta: bool = False
 
 
 @dataclass
@@ -77,8 +74,7 @@ class PoseResult:
     avg_tag_distance: float
     ambiguity: float
     reprojection_error: float
-    xy_std_dev: float
-    theta_std_dev: float
+    std_dev_factor: float  # avg_dist^2 / tag_count^2 * camera factor; the robot applies coefficients
 
     @property
     def tag_mask(self) -> int:
@@ -197,12 +193,9 @@ class PoseSolver:
             self.last_reject = f"robot height {robot_pose.Z():.2f} m (check robot_to_camera?)"
             return None
 
+        # Trust shrinks with distance^2 and grows with tag count^2. The robot turns this
+        # into std devs with its own (tunable) coefficients.
         factor = (avg_dist**2) / (len(ids) ** 2) * std_dev_factor
-        xy_std = self.s.xy_coefficient * factor
-        if len(ids) == 1 and not self.s.trust_single_tag_theta:
-            theta_std = math.inf
-        else:
-            theta_std = self.s.theta_coefficient * factor
 
         return PoseResult(
             robot_pose=robot_pose,
@@ -211,6 +204,5 @@ class PoseSolver:
             avg_tag_distance=avg_dist,
             ambiguity=ambiguity,
             reprojection_error=reproj,
-            xy_std_dev=xy_std,
-            theta_std_dev=theta_std,
+            std_dev_factor=factor,
         )

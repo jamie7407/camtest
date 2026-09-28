@@ -2,7 +2,8 @@
   "nt": {
     "team": 7407,
     "server": null,
-    "client_name": "opi-vision"
+    "client_name": "opi-vision",
+    "standalone": true
   },
   "topic": "/Vision/observations",
   "field": {
@@ -24,26 +25,28 @@
     "field_border_margin_m": 0.5,
     "max_z_error_m": 0.75
   },
-  "stddev": {
-    "xy_coefficient": 0.01,
-    "theta_coefficient": 0.03,
-    "trust_single_tag_theta": false
-  },
   "stream": {
     "enabled": true,
     "base_port": 1181,
     "max_fps": 30,
     "jpeg_quality": 80
   },
+  "calibration_board": {
+    "squares_x": 12,
+    "squares_y": 9,
+    "square_length_m": 0.03,
+    "marker_length_m": 0.023,
+    "dict": "DICT_5X5_1000",
+    "legacy": false
+  },
   "cameras": [
     {
       "name": "left_cam",
-      "device": "/dev/v4l/by-path/REPLACE-ME-video-index0",
-      "width": 1280,
-      "height": 800,
+      "device": "/dev/v4l/by-path/platform-fc880000.usb-usb-0:1:1.0-video-index0",
+      "width": 1600,
+      "height": 1300,
       "fps": 50,
       "fourcc": "MJPG",
-      "calibration": "calibrations/left_cam.json",
       "robot_to_camera": {
         "x": 0.020625,
         "y": -0.294407,
@@ -58,12 +61,11 @@
     },
     {
       "name": "right_cam",
-      "device": "/dev/v4l/by-path/REPLACE-ME-video-index1",
-      "width": 1280,
-      "height": 800,
+      "device": "/dev/v4l/by-path/platform-fc800000.usb-usb-0:1:1.0-video-index0",
+      "width": 1600,
+      "height": 1300,
       "fps": 50,
       "fourcc": "MJPG",
-      "calibration": "calibrations/right_cam.json",
       "robot_to_camera": {
         "x": -0.020625,
         "y": -0.294407,

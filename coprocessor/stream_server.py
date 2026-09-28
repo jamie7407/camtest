@@ -2,7 +2,12 @@
 
   /stream.mjpg   annotated (tag outlines, IDs, reject reasons, HUD)
   /raw.mjpg      untouched camera frames (focus tools, calibration, sanity checks)
-  /              simple page showing both
+  /              settings page: stream + live settings panel (like PhotonVision's)
+  /api/state     GET  current settings/stats as JSON
+  /api/set       POST {"exposure": 20, ...} -> applied live (same as editing NT)
+  /api/save      POST -> write current settings to config.json
+  /api/calib     POST {"op": "start" | "capture" | "calibrate" | "save" | ...} calibration
+  /api/board.png GET  printable calibration board for the current board settings
 
 Frames are encoded ONLY while someone is watching that stream -- an unwatched
 stream costs nothing. Encoding happens on a separate thread (cv2.imencode releases
@@ -12,19 +17,15 @@ Full resolution; max_fps caps how often a new frame is encoded while watched.
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import cv2
 
-_PAGE = """<!doctype html><html><head><title>{name}</title>
-<style>body{{background:#111;color:#ddd;font-family:sans-serif;margin:12px}}
-img{{max-width:100%;display:block;margin:6px 0 18px}}a{{color:#8cf}}</style></head>
-<body><h3>{name}</h3>
-<div>Annotated &middot; <a href="/stream.mjpg">/stream.mjpg</a></div><img src="/stream.mjpg">
-<div>Raw &middot; <a href="/raw.mjpg">/raw.mjpg</a></div><img src="/raw.mjpg">
-</body></html>"""
+_PAGE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_ui.html")
 
 
 class _Channel:
@@ -37,8 +38,15 @@ class _Channel:
 
 
 class MjpegStreamServer:
-    def __init__(self, name: str, port: int, jpeg_quality: int = 80):
+    def __init__(self, name: str, port: int, jpeg_quality: int = 80,
+                 get_state=None, on_action=None, extra_get=None):
+        """get_state() -> dict for /api/state; on_action("set" | "save" | "calib", {...})
+        handles the settings page's requests. extra_get maps other GET paths to a
+        function returning (content type, bytes)."""
         self.name = name
+        self.get_state = get_state
+        self.on_action = on_action
+        self.extra_get = extra_get or {}
         self.port = port
         self.quality = jpeg_quality
         self.channels = {"stream": _Channel(), "raw": _Channel()}
@@ -91,12 +99,22 @@ class MjpegStreamServer:
             def do_GET(self):
                 path = self.path.split("?")[0]
                 if path in ("/", "/index.html"):
-                    body = _PAGE.format(name=srv.name).encode()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
+                    with open(_PAGE_PATH, "rb") as f:  # read each time so edits show on reload
+                        self._send(200, "text/html; charset=utf-8", f.read())
+                    return
+                if path == "/api/state":
+                    state = srv.get_state() if srv.get_state else {"name": srv.name}
+                    # default=: numpy scalars (np.bool_, np.float64) -> plain Python values
+                    body = json.dumps(state, default=lambda o: o.item() if hasattr(o, "item") else str(o))
+                    self._send(200, "application/json", body.encode())
+                    return
+                if path in srv.extra_get:
+                    try:
+                        ctype, body = srv.extra_get[path]()
+                    except Exception as e:
+                        self.send_error(500, str(e))
+                        return
+                    self._send(200, ctype, body)
                     return
                 if path in ("/stream.mjpg", "/stream"):
                     self._serve(srv.channels["stream"])
@@ -104,6 +122,37 @@ class MjpegStreamServer:
                     self._serve(srv.channels["raw"])
                 else:
                     self.send_error(404)
+
+            def do_POST(self):
+                path = self.path.split("?")[0]
+                if srv.on_action is None or path not in ("/api/set", "/api/save", "/api/calib"):
+                    self.send_error(404)
+                    return
+                try:
+                    n = int(self.headers.get("Content-Length") or 0)
+                    data = json.loads(self.rfile.read(n) or b"{}")
+                    if not isinstance(data, dict):
+                        raise ValueError("expected a JSON object")
+                except ValueError as e:
+                    self.send_error(400, str(e))
+                    return
+                if path == "/api/set":
+                    srv.on_action("set", data)
+                elif path == "/api/calib":
+                    srv.on_action("calib", data)
+                else:
+                    srv.on_action("save")
+                self._send(200, "application/json", b'{"ok":true}')
+
+            def _send(self, code, ctype, body: bytes):
+                self.send_response(code)
+                self.send_header("Content-Type", ctype)
+                # One page switches between cameras, and each camera is on its own port.
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                self.wfile.write(body)
 
             def _serve(self, ch: _Channel):
                 self.send_response(200)

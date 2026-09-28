@@ -9,9 +9,9 @@ Wants=network-online.target
 
 [Service]
 # Change these two paths/user to match where you put the code.
-User=orangepi
-WorkingDirectory=/home/orangepi/vision/coprocessor
-ExecStart=/usr/bin/python3 -u main.py --config config.json
+User=choate7407
+WorkingDirectory=/home/choate7407/vision/coprocessor
+ExecStart=/home/choate7407/vision/coprocessor/venv/bin/python -u main.py --config config.json
 Restart=always
 RestartSec=2
 
