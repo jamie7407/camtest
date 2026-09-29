@@ -17,3 +17,6 @@ coprocessor/camera_*.jpg
 # Temp files from the atomic config/calibration writes (left behind only if a write is interrupted)
 .config-*.json
 .calib-*.json
+
+# Saved values of the standalone NT server (runtime state, written automatically)
+networktables.json*

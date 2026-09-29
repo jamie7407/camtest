@@ -175,7 +175,37 @@ After editing the installed service, run `daemon-reload` and restart.
 
 ## 7. Robot side
 
-Copy `robot/batched_vision.py` and `robot/vision_types.py` into your RobotPy project:
+### 7407-DriveCode-Rebuilt (2026 robot)
+
+`robot/` is a drop-in for the robot code's `sensors/`, replacing the PhotonVision cameras:
+
+1. **Copy `robot/batched_vision.py`, `robot/vision_types.py` and `robot/field_odometry.py` into `sensors/`** (the new `field_odometry.py` replaces the PhotonVision one).
+2. **`sensors/__init__.py`:** export `BatchedVisionSource` (from `sensors.batched_vision`) alongside `FieldOdometry`.
+3. **`robotcontainer.py`:** instead of building `PhotonCamCustom`s for `front_cam` / `front_left_cam`, create one source and pass it to `FieldOdometry`:
+   ```python
+   self.vision = BatchedVisionSource()
+   self.field_odometry = FieldOdometry(self.drivetrain, self.vision, self.backup_gyro)
+   ```
+   `robot.py` keeps calling `self.robot.field_odometry.update()` every loop, and `enable()` / `disable()` work as before.
+4. **Deploy the robot code and the coprocessor together.** The message is named `VisionObservationV2`; a mismatched pair gets *no* vision data rather than garbage. `Vision/Coprocessor Connected` on SmartDashboard only means the Pi is alive (heartbeat), so check observations are actually arriving.
+
+What the new `FieldOdometry` keeps from the PhotonVision version: enable/disable, the single-tag filter (rejected beyond `robot_constants.odometry_tag_distance` or above 0.2 ambiguity), and the backup-gyro reset when `gyro_broken`. What changes: the hand-tuned std dev tiers become one formula from the coprocessor's `stdDevFactor` (avgTagDistance² / tagCount² × the camera's `std_dev_factor`), with coefficients as Preferences you tune in Elastic under `/Preferences/Vision/` (persisted on the roboRIO):
+
+| Preference | Default | Meaning |
+|---|---|---|
+| `XY Std Dev Coeff` | 0.2 | xy std dev (m) = coeff × stdDevFactor |
+| `Theta Std Dev Coeff` | 5.0 | heading std dev (rad) = coeff × stdDevFactor, multi-tag only |
+| `Single Tag Theta Std Dev` | 100 | single-tag heading (effectively ignored; gyro owns heading) |
+
+The defaults roughly reproduce the old tiers (3 tags at 3 m → 0.2 m, 1 tag at 2 m → 0.8 m). The old code trusted `front_cam` more with two tags; the equivalent now is giving `front_left_cam` a higher `std_dev_factor` on the settings page.
+
+The capture times from `poll()` are FPGA seconds, which is what the drivetrain's `add_vision_measurement` expects (it converts to Phoenix time itself).
+
+Cameras in `config.json` match `robot_constants.py`: `front_cam` and `front_left_cam`, with `robot_to_camera` copied from `front_cam_transform` / `front_left_cam_transform` (inches converted to meters; same WPILib rotation conventions). If a transform changes in the robot code, change it here too.
+
+### Other RobotPy projects
+
+`BatchedVision` in `robot/batched_vision.py` is a minimal all-in-one consumer:
 
 ```python
 from batched_vision import BatchedVision
@@ -190,7 +220,7 @@ class Drivetrain(commands2.Subsystem):
         self.vision.update(self.pose_estimator)
 ```
 
-**Std devs are tuned on the robot.** Each observation carries `stdDevFactor` = avgTagDistance² / tagCount² × the camera's `std_dev_factor` (set on the Pi). `BatchedVision` multiplies it by coefficients stored as WPILib Preferences, so you tune them in Elastic under `/Preferences/Vision/` and they persist on the roboRIO:
+Its std devs are `coefficient × stdDevFactor`, with the coefficients as WPILib Preferences (tunable in Elastic under `/Preferences/Vision/`, persisted on the roboRIO):
 
 | Preference | Default | Meaning |
 |---|---|---|
@@ -198,9 +228,11 @@ class Drivetrain(commands2.Subsystem):
 | `ThetaStdDevCoefficient` | 0.03 | heading std dev (rad) = coefficient × stdDevFactor |
 | `TrustSingleTagTheta` | false | false = single-tag heading ignored (gyro owns heading) |
 
-Lower coefficient = trust vision more: the pose snaps to vision faster but jitters more.
+Single-tag observations more than 1 m from the current estimate are ignored while enabled (`max_single_tag_jump_m`); while disabled everything is accepted so vision can seed your starting pose.
 
-Capture timestamps are handled for you: each observation carries its age at publish time (measured from the camera driver's frame timestamp when it's available, otherwise from when the frame was read), and NT4 converts the publish timestamp to the robot's clock. Single-tag observations more than 1 m from the current estimate are ignored while enabled (tune `max_single_tag_jump_m`); while disabled everything is accepted so vision can seed your starting pose. `self.vision.last_observations` has the latest batch if you want to log it.
+### Timestamps
+
+Each observation carries its age at publish time (measured from the camera driver's frame timestamp when it's available, otherwise from when the frame was read), and NT4 converts the publish timestamp to the robot's clock, so `poll()` returns true capture times in the robot's timebase.
 
 ## Troubleshooting
 
@@ -218,7 +250,7 @@ Capture timestamps are handled for you: each observation carries its age at publ
 
 ## Tuning notes
 
-**Std devs.** The robot-side coefficients (xy 0.01, theta 0.03) are a starting point, not tuned for our robot. Tune them in Elastic (`/Preferences/Vision/`) while driving: if the pose lags or drifts from vision, lower them; if it jitters or jumps, raise them. Use `std_dev_factor` per camera (on the Pi) to trust a worse camera less.
+**Std devs.** The robot-side coefficients are a starting point, not tuned for our robot. Tune them in Elastic while driving (on the 2026 robot, `FieldOdometry`'s `Vision/...` values): if the pose lags or drifts from vision, lower them; if it jitters or jumps, raise them. Use `std_dev_factor` per camera (on the Pi) to trust a worse camera less.
 
 **Detector.** `quad_decimate` finds tag outlines on an image shrunk by that factor (corners are still refined at full resolution): higher is much faster but loses small, far tags, so it trades range for speed. `min_cluster_pixels` is the smallest candidate outline considered (on the decimated image); it's a noise filter, and WPILib's default of 300 loses far tags, so keep it low (~20). `min_decision_margin` is how confidently a tag's bits were read; raise it if you see phantom tags or jumpy far-tag poses, lower it (~15) if good tags in dim light or at distance get dropped.
 
