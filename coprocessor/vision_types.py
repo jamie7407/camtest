@@ -17,7 +17,9 @@ import wpiutil.wpistruct as wpistruct
 from wpimath.geometry import Pose3d
 
 
-@wpistruct.make_wpistruct(name="VisionObservation")
+# The name is versioned: bump it whenever the fields change, so a robot and coprocessor
+# on different versions see no data (type mismatch) instead of misreading each other's bytes.
+@wpistruct.make_wpistruct(name="VisionObservationV2")
 @dataclasses.dataclass
 class VisionObservation:
     cameraId: wpistruct.int32  # index into the coprocessor's camera list

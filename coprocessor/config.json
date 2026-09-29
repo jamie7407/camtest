@@ -41,38 +41,38 @@
   },
   "cameras": [
     {
-      "name": "left_cam",
+      "name": "front_cam",
       "device": "/dev/v4l/by-path/platform-fc880000.usb-usb-0:1:1.0-video-index0",
       "width": 1600,
       "height": 1300,
       "fps": 50,
       "fourcc": "MJPG",
       "robot_to_camera": {
-        "x": 0.020625,
-        "y": -0.294407,
-        "z": 0.078312,
+        "x": -0.107467,
+        "y": -0.277089,
+        "z": 0.512699,
         "roll_deg": 0,
-        "pitch_deg": -22,
-        "yaw_deg": -105
+        "pitch_deg": -31.898,
+        "yaw_deg": 10
       },
       "std_dev_factor": 1.0,
       "exposure": null,
       "gain": null
     },
     {
-      "name": "right_cam",
+      "name": "front_left_cam",
       "device": "/dev/v4l/by-path/platform-fc800000.usb-usb-0:1:1.0-video-index0",
       "width": 1600,
       "height": 1300,
       "fps": 50,
       "fourcc": "MJPG",
       "robot_to_camera": {
-        "x": -0.020625,
-        "y": -0.294407,
-        "z": 0.078312,
+        "x": -0.107467,
+        "y": 0.277089,
+        "z": 0.512699,
         "roll_deg": 0,
-        "pitch_deg": -22,
-        "yaw_deg": -75
+        "pitch_deg": -31.898,
+        "yaw_deg": -10
       },
       "std_dev_factor": 1.0,
       "exposure": null,
